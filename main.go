@@ -50,7 +50,8 @@ func main() {
 	defer db.Close(context.Background())
 
 	mux := http.NewServeMux()
-
+	
+//Routes 
 	mux.HandleFunc("GET /", rootHandler)
 	mux.HandleFunc("POST /users", createUserHandler)
 	mux.HandleFunc("GET /users", getsUsersHandler)
