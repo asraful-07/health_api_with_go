@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"slices"
 	"strconv"
 
 	"github.com/jackc/pgx/v5"
@@ -129,15 +128,22 @@ if err != nil {
 	http.Error(w, "Invalid user ID", http.StatusBadRequest)
 	return
 }
-for _, user := range users {
-	if user.Id == id {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(user)
+
+query := "SELECT id, name, email, age FROM users WHERE id = $1"
+var user User
+err = db.QueryRow(context.Background(), query, id).Scan(&user.Id, &user.Name, &user.Email, &user.Age)
+if err != nil {
+	if err == pgx.ErrNoRows {
+		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
+	http.Error(w, "Error fetching user", http.StatusInternalServerError)
+	return
 }
-http.Error(w, "User not found", http.StatusNotFound)
+
+w.Header().Set("Content-Type", "application/json")
+w.WriteHeader(http.StatusOK)
+json.NewEncoder(w).Encode(user)
 }
 
 func updateUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -169,22 +175,19 @@ json.NewEncoder(w).Encode(updatedUser)
 }
 
 func deleteUserHandler(w http.ResponseWriter, r *http.Request) {
-idParam := r.PathValue("id")
-id, err := strconv.Atoi(idParam)
-if err != nil {
-	http.Error(w, "Invalid user ID", http.StatusBadRequest)
-	return
-}
-for i, user := range users {
-	if user.Id == id {
-		// users = append(users[:i], users[i+1:]...)
-		users = slices.Delete(users, i, i+1)
-
-		w.WriteHeader(http.StatusNoContent)
+	idParam := r.PathValue("id")
+	id, err := strconv.Atoi(idParam)
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
 		return
-	}	
-		
-}
-http.Error(w, "User not found", http.StatusNotFound)
-}
+	}
 
+	query := "DELETE FROM users WHERE id = $1"
+	_, err = db.Exec(context.Background(), query, id)
+	if err != nil {
+		http.Error(w, "Error deleting user", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
