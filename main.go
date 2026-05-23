@@ -2,192 +2,43 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 
-	"github.com/jackc/pgx/v5"
+	"go-project/db"
+	"go-project/handler"
+
+	"github.com/joho/godotenv"
 )
 
-var db *pgx.Conn
-
-type User struct {
-	Id int  `json:"id"`
-	Name string `json:"name"`
-	Email string `json:"email"`
-	Age int `json:"age"`
-}
-
-var users = []User{
-	{
-		Id: 1, 
-		Name: "Alice", 
-		Email: "alice@example.com", 
-		Age: 30,
-	},
-	{
-		Id: 2,
-		Name: "Bob",
-		Email: "bob@example.com",
-		Age: 23,
-	},
-}
-
-func connectDB() {
- var err error
- connStr := "postgres://postgres:rahat12@localhost:5432/go_crud_db"
-
- db, err = pgx.Connect(context.Background(), connStr)
- if err != nil {
-	 panic(err)
- }
-}
-
 func main() {
-	connectDB()
-	defer db.Close(context.Background())
+	var err error
+
+	err = godotenv.Load()
+
+	if err != nil {
+		fmt.Println("Error loading .env file:", err)
+	}
+
+	db.ConnectDB()
+	handler.SetDB(db.DB)
+	defer db.DB.Close(context.Background())
 
 	mux := http.NewServeMux()
-	
-//Routes 
-	mux.HandleFunc("GET /", rootHandler)
-	mux.HandleFunc("POST /users", createUserHandler)
-	mux.HandleFunc("GET /users", getsUsersHandler)
-    mux.HandleFunc("GET /user/{id}", getUserHandler)
-    mux.HandleFunc("PUT /user/{id}", updateUserHandler)
-    mux.HandleFunc("DELETE /user/{id}", deleteUserHandler)
+
+	// Routes
+	mux.HandleFunc("GET /", handler.RootHandler)
+	mux.HandleFunc("POST /users", handler.CreateUserHandler)
+	mux.HandleFunc("GET /users", handler.GetUsersHandler)
+	mux.HandleFunc("GET /user/{id}", handler.GetUserHandler)
+	mux.HandleFunc("PUT /user/{id}", handler.UpdateUserHandler)
+	mux.HandleFunc("DELETE /user/{id}", handler.DeleteUserHandler)
 
 	fmt.Println("Server running on :8080")
-	 err := http.ListenAndServe(":8080", mux)
-	 
-	 if err != nil {
-		 fmt.Println("Error starting server:", err)
-	 }
-}
+	err = http.ListenAndServe(":8080", mux)
 
-
-func rootHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Health checker web site!"))	
-}
-
-func createUserHandler(w http.ResponseWriter, r *http.Request) {
-	var newUser User
-
-	err := json.NewDecoder(r.Body).Decode(&newUser)
 	if err != nil {
-		http.Error(w, "Invalid request payload", http.StatusBadRequest)
-		return
+		fmt.Println("Error starting server:", err)
 	}
-
-query := "INSERT INTO users (name, email, age) VALUES ($1, $2, $3) RETURNING id"
-err = db.QueryRow(context.Background(), query, newUser.Name, newUser.Email, newUser.Age).Scan(&newUser.Id)
-
-if err != nil {
-	http.Error(w, "Error creating user", http.StatusInternalServerError)
-	return
 }
 
-	w.WriteHeader(http.StatusCreated)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(newUser)
-}
-
-func getsUsersHandler(w http.ResponseWriter, r *http.Request) {
-	query := "SELECT id, name, email, age FROM users"
-	rows, err := db.Query(context.Background(), query)
-if err != nil {
-	http.Error(w, "Error fetching users", http.StatusInternalServerError)
-	return
-}
-
-defer rows.Close()
-
-var users []User
-
-for rows.Next() {
-	var user User
-	err := rows.Scan(&user.Id, &user.Name, &user.Email, &user.Age)
-	if err != nil {
-		http.Error(w, "Error scanning user", http.StatusInternalServerError)
-		return
-	}	
-	users = append(users, user)
-    }
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(users)
-}
-
-func getUserHandler(w http.ResponseWriter, r *http.Request) {
-idParam := r.PathValue("id")
-
-id, err := strconv.Atoi(idParam)
-if err != nil {
-	http.Error(w, "Invalid user ID", http.StatusBadRequest)
-	return
-}
-
-query := "SELECT id, name, email, age FROM users WHERE id = $1"
-var user User
-err = db.QueryRow(context.Background(), query, id).Scan(&user.Id, &user.Name, &user.Email, &user.Age)
-if err != nil {
-	if err == pgx.ErrNoRows {
-		http.Error(w, "User not found", http.StatusNotFound)
-		return
-	}
-	http.Error(w, "Error fetching user", http.StatusInternalServerError)
-	return
-}
-
-w.Header().Set("Content-Type", "application/json")
-w.WriteHeader(http.StatusOK)
-json.NewEncoder(w).Encode(user)
-}
-
-func updateUserHandler(w http.ResponseWriter, r *http.Request) {
-idParam := r.PathValue("id")
-id, err := strconv.Atoi(idParam)
-if err != nil {
-	http.Error(w, "Invalid user ID", http.StatusBadRequest)
-	return
-}
-
-var updatedUser User
-err = json.NewDecoder(r.Body).Decode(&updatedUser)
-if err != nil {
-	http.Error(w, "Invalid request payload", http.StatusBadRequest)
-	return
-}
-
-query := "UPDATE users SET name = $1, email = $2, age = $3 WHERE id = $4"
-_, err = db.Exec(context.Background(), query, updatedUser.Name, updatedUser.Email, updatedUser.Age, id)
-if err != nil {
-	http.Error(w, "Error updating user", http.StatusInternalServerError)
-	return
-}
-
-updatedUser.Id = id
-w.Header().Set("Content-Type", "application/json")
-w.WriteHeader(http.StatusOK)
-json.NewEncoder(w).Encode(updatedUser)
-}
-
-func deleteUserHandler(w http.ResponseWriter, r *http.Request) {
-	idParam := r.PathValue("id")
-	id, err := strconv.Atoi(idParam)
-	if err != nil {
-		http.Error(w, "Invalid user ID", http.StatusBadRequest)
-		return
-	}
-
-	query := "DELETE FROM users WHERE id = $1"
-	_, err = db.Exec(context.Background(), query, id)
-	if err != nil {
-		http.Error(w, "Error deleting user", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
