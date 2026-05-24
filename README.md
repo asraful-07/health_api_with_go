@@ -1,4 +1,5 @@
 **README.md**
+
 **Go** is a programming language designed for building simple, fast, and reliable software. It was created at Google in 2007 and has since become one of the most popular programming languages in the world.The Go programming language is known for its simplicity, efficiency, and strong support for concurrent programming. It has a clean syntax and a powerful standard library that makes it easy to build a wide range of applications, from web servers to command-line tools.
 
 # Project Structure
@@ -44,7 +45,6 @@ project-root/
 └── README.md
 
 
-# Recommended Structure two
 my-app/
 ├── cmd/
 │   └── main.go              ← app entry point, wires everything together
